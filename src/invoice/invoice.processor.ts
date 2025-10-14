@@ -13,7 +13,7 @@ type AnalyzePayload = { invoiceId: number; filePath: string };
 export class InvoiceProcessor extends WorkerHost {
   constructor(
     @InjectRepository(Invoice) private invoiceRepo: Repository<Invoice>,
-    private readonly langchainService: LangchainService,
+    private readonly langchainService: LangchainService
   ) {
       super();
   }
@@ -22,14 +22,14 @@ export class InvoiceProcessor extends WorkerHost {
     const { invoiceId, filePath } = job.data;
 
     try {
-      const content = await this.langchainService.analyzeDocument(filePath);
+      const { extraction, vendorDecision } = await this.langchainService.analyzeDocument(filePath, invoiceId.toString());
 
       await this.invoiceRepo.update(invoiceId, {
         status: 'processed',
-        data: JSON.stringify(content),
+        data: JSON.stringify(extraction),
       });
 
-      return content;
+      return { extraction, vendorDecision };
     } catch (err: any) {
       await this.invoiceRepo.update(invoiceId, {
         status: 'failed',

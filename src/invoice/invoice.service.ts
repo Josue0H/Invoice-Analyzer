@@ -56,10 +56,22 @@ export class InvoiceService {
     }
 
     async getInvoice(id: string): Promise<Invoice> {
-        const invoice = await this.invoiceRepo.findOneBy({ id: Number(id) });
+        const invoice = await this.invoiceRepo.findOne({
+            where: { id: Number(id) },
+            relations: { vendor: true },
+        });
         if (!invoice) {
             throw new Error('Invoice not found');
         }
         return invoice;
+    }
+
+    async linkVendor(invoiceId: string, vendorId: string): Promise<Invoice> {
+        const invoice = await this.invoiceRepo.findOneBy({ id: Number(invoiceId) });
+        if (!invoice) {
+            throw new Error('Invoice not found');
+        }
+        invoice.vendorId = vendorId;
+        return this.invoiceRepo.save(invoice);
     }
 }

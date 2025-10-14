@@ -21,7 +21,9 @@
   },
   "dependencies": {
     "@as-integrations/express5": "^1.1.2",
+    "@langchain/core": "^0.3.78",
     "@langchain/google-vertexai": "^0.2.18",
+    "@langchain/langgraph": "^0.4.9",
     "@nestjs/apollo": "^13.2.1",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",

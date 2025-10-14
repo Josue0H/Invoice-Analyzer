@@ -5,10 +5,11 @@ import { Invoice } from './invoice/entities/invoice.entity';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
-
+import { Vendor } from './vendor/entities/vendor.entity';
 
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
+import { VendorModule } from './vendor/vendor.module';
 
 @Module({
   imports: [
@@ -18,7 +19,6 @@ import { join } from 'path';
     BullModule.forRoot({
       connection: { host: 'localhost', port: 6379 },
     }),
-    BullModule.registerQueue({ name: 'invoice' }),
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
@@ -38,8 +38,9 @@ import { join } from 'path';
       entities: [__dirname + '/**/*.entity.{ts,js}', Invoice],
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([Invoice]),
-    InvoiceModule
+    TypeOrmModule.forFeature([Invoice, Vendor]),
+    InvoiceModule,
+    VendorModule,
   ],
   controllers: [],
   providers: [],

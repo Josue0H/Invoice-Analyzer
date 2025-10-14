@@ -2,6 +2,16 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type Vendor {
+  id: String!
+  displayName: String!
+  taxId: String
+  iban: String
+  email: String
+  phone: String
+  address: String
+}
+
 type Invoice {
   id: Float!
   filename: String!
@@ -10,6 +20,8 @@ type Invoice {
   status: String!
   createdAt: DateTime!
   updatedAt: DateTime
+  vendorId: String
+  vendor: Vendor
 }
 
 """
@@ -24,6 +36,7 @@ scalar DateTime
 
 type Query {
   getInvoice(id: String!): Invoice!
+  getVendors: [Vendor!]!
 }
 
 type Mutation {

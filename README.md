@@ -1,98 +1,174 @@
 <p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
+  <img src="https://nestjs.com/img/logo-small.svg" width="92" alt="NestJS" />
 </p>
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+# Invoice Analyzer (NestJS + GraphQL + LangChain)
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Extract structured data from invoice PDFs and automatically match or create vendors using an AI agent powered by LangChain and Google Vertex AI (Gemini). Files are uploaded via GraphQL, processed asynchronously with BullMQ, and results are stored in Postgres.
 
-## Description
+> Demo: you can check a demo video [here](https://youtu.be/Grt4E5qfWRI)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+If the video doesn't render in your viewer, download/play it directly: `./demo_video.mov`.
 
-## Project setup
+## What this app does
+
+- Accepts an invoice PDF through a GraphQL mutation (`analyzeInvoice`).
+- Saves the file to `uploads/` and creates an `Invoice` record with status `processing`.
+- Enqueues a background job (BullMQ/Redis) to analyze the PDF with Google Vertex AI (Gemini 2.5 Flash) using LangChain.
+- Extracts a structured JSON payload (invoice number, totals, vendor/customer info, dates, etc.).
+- Uses a LangGraph agent with tools to decide whether to link to an existing vendor or create a new one:
+  - `similar_vendors` (search by name)
+  - `create_vendor`
+  - `link_vendor`
+- Updates the `Invoice` with status `processed` and stores the extracted JSON in `data` (exposed as `parsedData`).
+
+## Tech stack
+
+- NestJS 11, GraphQL (Apollo Driver)
+- File uploads: `graphql-upload`
+- Background jobs: BullMQ + Redis
+- Database: Postgres + TypeORM
+- AI: LangChain, LangGraph, Google Vertex AI (Gemini 2.5 Flash)
+
+## Architecture overview
+
+1) Client calls `analyzeInvoice(file: Upload!)`.
+2) The server persists the file and creates an `Invoice` row with `status=processing`.
+3) A BullMQ worker (`InvoiceProcessor`) picks up the job and calls `LangchainService.analyzeDocument`.
+4) Gemini extracts structured fields defined by a Zod schema.
+5) An agent runs tools to match/create a `Vendor` and link it to the invoice.
+6) The invoice is updated to `processed` with `data` set to the JSON extraction.
+
+---
+
+## Prerequisites
+
+- Node.js 18+ (LTS recommended)
+- Redis running locally on `localhost:6379`
+  - macOS: `brew install redis && brew services start redis`
+- Postgres running locally on `localhost:5432`
+  - Database: `langchain_analyzer`
+  - User: `postgres`, Password: `postgres`
+- Google Cloud service account with access to Vertex AI
+  - Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your JSON key (e.g., `cloud_storage_key.json`).
+
+Notes:
+- Connection settings for Redis and Postgres are currently hard-coded in `src/app.module.ts`. Adjust them there if your environment differs.
+- The upload size limit is 50 MB (configured in `src/main.ts`).
+
+## Setup
+
+1) Install dependencies
 
 ```bash
-$ npm install
+npm install
 ```
 
-## Compile and run the project
+2) Ensure Redis is running
+
+```bash
+# macOS (Homebrew)
+brew services start redis
+```
+
+3) Ensure Postgres is running and the database exists
+
+```bash
+# Create DB (adjust if needed)
+createdb langchain_analyzer || true
+```
+
+4) Set Google credentials environment variable
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/cloud_storage_key.json"
+```
+
+5) Start the server
 
 ```bash
 # development
-$ npm run start
+npm run start
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+# or watch mode
+npm run start:dev
 ```
 
-## Run tests
+The GraphQL endpoint will be available at:
 
-```bash
-# unit tests
-$ npm run test
+- http://localhost:3000/graphql
 
-# e2e tests
-$ npm run test:e2e
+> CORS is enabled for `*` by default (see `src/main.ts`).
 
-# test coverage
-$ npm run test:cov
+## GraphQL API
+
+### Types
+
+- `Invoice` fields: `id`, `filename`, `status`, `data` (raw JSON string), `parsedData` (JSON object), `vendor`, timestamps.
+- `Vendor` fields: `id`, `displayName`, `taxId`, `iban`, `email`, `phone`, `address`.
+
+### Queries
+
+Get a single invoice by id:
+
+```graphql
+query GetInvoice($id: String!) {
+  getInvoice(id: $id) {
+    id
+    filename
+    status
+    parsedData
+    vendor {
+      id
+      displayName
+    }
+  }
+}
 ```
 
-## Deployment
+List vendors:
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```graphql
+query Vendors {
+  getVendors {
+    id
+    displayName
+    email
+  }
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Mutations
 
-## Resources
+Upload and analyze an invoice PDF (GraphQL multipart request):
 
-Check out a few resources that may come in handy when working with NestJS:
+Response example (initial):
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```json
+{
+  "data": {
+    "analyzeInvoice": {
+      "id": 1,
+      "status": "processing",
+      "filename": "invoice.pdf"
+    }
+  }
+}
+```
 
-## Support
+Then poll `getInvoice(id)` until `status` becomes `processed` (or `failed`). When processed, `parsedData` will contain the extracted JSON, and `vendor` may be linked based on the agent's decision.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Background processing and AI agent
 
-## Stay in touch
+- Queue: `invoice` (BullMQ)
+- Worker: `InvoiceProcessor` (`src/invoice/invoice.processor.ts`)
+- Extraction: `LangchainService.analyzeDocument` calls Vertex AI (Gemini 2.5 Flash) with a Zod-enforced structured output schema.
+- Vendor decision: `LangchainService.matchOrcreateVendor` runs a LangGraph ReAct agent with tools from `LangchainTools`:
+  - `similar_vendors(name)` — searches existing vendors by name
+  - `create_vendor({ displayName, taxId, email, phone, address, iban })` — creates a vendor
+  - `link_vendor({ vendorId, invoiceId })` — links a vendor to the invoice
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Decision policy (simplified):
 
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+1) Try to find a matching vendor by email or normalized name; if found, link it.
+2) Otherwise, create a new vendor using only visible fields.

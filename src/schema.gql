@@ -34,6 +34,15 @@ A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date
 """
 scalar DateTime
 
+type LlmMessageEvent {
+  kind: String!
+  text: String
+  json: JSONObject
+  toolName: String
+  invoiceId: String
+  createdAt: String!
+}
+
 type Query {
   getInvoice(id: String!): Invoice!
   getVendors: [Vendor!]!
@@ -45,3 +54,7 @@ type Mutation {
 
 """The `Upload` scalar type represents a file upload."""
 scalar Upload
+
+type Subscription {
+  llmMessages(invoiceId: String!): LlmMessageEvent!
+}

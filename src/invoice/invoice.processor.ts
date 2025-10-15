@@ -22,14 +22,14 @@ export class InvoiceProcessor extends WorkerHost {
     const { invoiceId, filePath } = job.data;
 
     try {
-      const { extraction, vendorDecision } = await this.langchainService.analyzeDocument(filePath, invoiceId.toString());
+      const response = await this.langchainService.analyzeDocument(filePath, invoiceId.toString());
 
       await this.invoiceRepo.update(invoiceId, {
         status: 'processed',
-        data: JSON.stringify(extraction),
+        data: JSON.stringify(response),
       });
 
-      return { extraction, vendorDecision };
+      return response;
     } catch (err: any) {
       await this.invoiceRepo.update(invoiceId, {
         status: 'failed',

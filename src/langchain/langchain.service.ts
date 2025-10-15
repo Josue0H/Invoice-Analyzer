@@ -5,6 +5,8 @@ import { z } from "zod";
 import { promises as fsp } from "fs";
 import { LangchainTools } from "./tools/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { Inject } from "@nestjs/common";
+import { PubSub } from "graphql-subscriptions";
 
 const invoiceSchema = z.object({
     invoiceNumber: z.string().describe("The invoice number"),
@@ -28,7 +30,11 @@ type InvoiceExtract = z.infer<typeof invoiceSchema>;
 
 @Injectable()
 export class LangchainService {
-    constructor(private configService: ConfigService, private readonly langchainTools: LangchainTools) {}
+    constructor(
+        private configService: ConfigService,
+        private readonly langchainTools: LangchainTools,
+        @Inject('PubSub') private pubSub: PubSub,
+    ) {}
 
     async analyzeDocument(filePath: string, invoiceId: string): Promise<any> {
 
@@ -45,6 +51,15 @@ export class LangchainService {
         };
 
         const model = this.getStructuredModel();
+
+        this.pubSub.publish(`llm:${invoiceId}`, {
+            llmMessages: {
+                kind: 'run_started',
+                text: `Starting invoice analysis for invoiceId ${invoiceId}`,
+                invoiceId,
+                createdAt: new Date().toISOString(),
+            }
+        });
 
         const response = await model.invoke([
             {
@@ -64,18 +79,35 @@ export class LangchainService {
             }
         ], config);        
 
-        const decision = await this.matchOrcreateVendor(response, invoiceId);
+        this.pubSub.publish(`llm:${invoiceId}`, {
+            llmMessages: {
+                kind: 'data_extracted',
+                text: `Data extracted for invoiceId ${invoiceId}`,
+                invoiceId,
+                json: response,
+                createdAt: new Date().toISOString(),
+            }
+        });
 
-        return {
-            extraction: response,
-            vendorDecision: decision
-        };
+        await this.matchOrcreateVendor(response, invoiceId);
+
+        this.pubSub.publish(`llm:${invoiceId}`, {
+            llmMessages: {
+                kind: 'process_completed',
+                text: `Invoice analysis completed for invoiceId ${invoiceId}`,
+                json: response,
+                invoiceId,
+                createdAt: new Date().toISOString(),
+            }
+        });
+
+        return response;
     }
 
     async matchOrcreateVendor(ex: InvoiceExtract, invoiceId?: string) {
         const agent = this.getAgent();
 
-        const response = await agent.invoke({
+        const input = {
             messages: [                
                 {
                     role: "user",
@@ -104,9 +136,17 @@ export class LangchainService {
                     `,
                 },
             ]            
-        });
+        };
 
-        return response;
+        for await (const evt of agent.streamEvents(input, {version: 'v2'})){
+            switch (evt.event) {
+                case 'on_tool_end':
+                    this.handleTool(evt, invoiceId);
+                    break;
+            }
+        }
+
+        return;
     }
 
     private getAgent() {
@@ -125,7 +165,6 @@ export class LangchainService {
         return agent;
     }
 
-
     private getStructuredModel(): any {
         const model = new ChatVertexAI({
             model: "gemini-2.5-flash",
@@ -136,5 +175,20 @@ export class LangchainService {
         const structuredModel = model.withStructuredOutput(invoiceSchema);
 
         return structuredModel;
+    }
+
+    private handleTool(evt: any, invoiceId?: string) {
+        const { name, data: { output: { content: output }, input: { input } } } = evt;
+
+        this.pubSub.publish(`llm:${invoiceId}`, {
+            llmMessages: {
+                kind: 'tool_used',
+                text: `Tool ${name} used.`,
+                toolName: name,
+                invoiceId: invoiceId,
+                json: { input, output },
+                createdAt: new Date().toISOString(),
+            }
+        });
     }
 }

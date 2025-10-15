@@ -6,7 +6,9 @@
 
 Extract structured data from invoice PDFs and automatically match or create vendors using an AI agent powered by LangChain and Google Vertex AI (Gemini). Files are uploaded via GraphQL, processed asynchronously with BullMQ, and results are stored in Postgres.
 
-> Demo: you can check a demo video [here](https://youtu.be/Grt4E5qfWRI)
+> Demo: you can check a demo video below:
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/OC-qd9waWFA?si=e98QRumMszqlq9w1" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 If the video doesn't render in your viewer, download/play it directly: `./demo_video.mov`.
 
